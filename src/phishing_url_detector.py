@@ -3,6 +3,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from src.constants import *
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import joblib
@@ -71,7 +72,7 @@ class PhishingURLDetector:
         probabilities = self.classifier.predict_proba(x)
 
         results = []
-        for url, pred, proba in zip(urls, predictions, probabilities):
+        for url, pred, proba in tqdm(zip(urls, predictions, probabilities), total=len(urls), desc="Predicting", unit="url"):
             # Add homoglyph warning
             homoglyph_warning = self._check_homoglyph_warning(url)
 

@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 from src.constants import * 
 import numpy as np
 import re
+from tqdm import tqdm
 
 class URLFeatureExtractor:
     """Extract lexical features from URLs for phishing detection."""
@@ -117,4 +118,4 @@ class URLFeatureExtractor:
     
     def extract_features_batch(self, urls):
         """Extract features for multiple URLs"""
-        return [self.extract_features(url) for url in urls]
+        return [self.extract_features(url) for url in tqdm(urls, desc="Extracting features", unit="url")]

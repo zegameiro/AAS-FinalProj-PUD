@@ -1,38 +1,26 @@
 from src.services.dataset_loader import fulldataset
-
-
-
 from src.phishing_url_detector import PhishingURLDetector
 
 def main():
-    phishing_urls = [
-        "http://paypal-secure.verification-update.com/login",
-        "http://192.168.1.1/banking/login.php",
-        "https://account-verify.secure-amazon.net/update",
-        "http://free-prize-winner.claim-now.tk/confirm",
-        "https://аpple.com/login",
-        "https://g00gle.com/verify",
-    ]
-
-    legitimate_urls = [
-        "https://www.google.com",
-        "https://github.com/user/repo",
-        "https://en.wikipedia.org/wiki/Machine_learning",
-        "https://stackoverflow.com/questions/12345"
-    ]
-
-    # Prepare training data
-    urls = phishing_urls + legitimate_urls
-    labels = [1]*len(phishing_urls) + [0]*len(legitimate_urls)
+    # Load data from DatasetLoader
+    print("Loading dataset...")
+    urls, labels = fulldataset.get_urls_and_labels()
+    
+    print(f"Total URLs loaded: {len(urls)}")
+    print(f"Phishing URLs: {sum(labels)}")
+    print(f"Benign URLs: {len(labels) - sum(labels)}")
 
     # Initialize and train the phishing URL detector
+    print("\nInitializing Random Forest detector...")
     detector = PhishingURLDetector(n_estimators=100)
-    detector.train(urls, labels, test_size=0.3)
+    
+    # Train with 20% test split
+    detector.train(urls, labels, test_size=0.2)
 
     # Save model
     # detector.save_model('phishing_detector.pkl')
 
-    # Test predictions
+    # Test predictions on sample URLs
     test_urls = [
         "https://secure-login-verify.com/account",
         "https://www.python.org/downloads",
@@ -40,6 +28,7 @@ def main():
         "https://paypaⅼ.com/login",
         "https://g00gle.com/verify",
         "https://www.google.com",
+        "http://paypal-secure.verification-update.com/login",
     ]
 
     print("\n=== Test Predictions ===")
