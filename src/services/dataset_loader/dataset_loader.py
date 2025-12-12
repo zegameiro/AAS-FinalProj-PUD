@@ -2,6 +2,7 @@ from src.models import DataType,UrlEntry
 import requests
 import os
 from io import StringIO
+from tqdm import tqdm
 import polars as pl
 
 SPAM_URL = "http://data.phishtank.com/data/online-valid.csv"
@@ -21,7 +22,7 @@ class DatasetLoader:
         data = requests.get(url)
         csv_data = StringIO(data.text)
         df = pl.read_csv(csv_data)
-        for entry in df.iter_rows(named=True):
+        for entry in tqdm(df.iter_rows(named=True), desc="Loading PhishTank data", unit="url"):
             entry_url = entry["url"]
             url_entry = UrlEntry(url=entry_url,data_type=DataType.PHISHING)
             entry_list.append(url_entry)
@@ -34,10 +35,10 @@ class DatasetLoader:
         csv_data = StringIO(data.text)
         df = pl.read_csv(csv_data)
 
-        for row in df.iter_rows(named=True):
+        for row in tqdm(df.iter_rows(named=True), desc="Loading Benign data", unit="url"):
             entry_url = row["Domain"]
             entry_url = "http://" + entry_url
-            url_entry = UrlEntry(url=entry_url,data_type=DataType.PHISHING)
+            url_entry = UrlEntry(url=entry_url,data_type=DataType.BENIGN)
             entry_list.append(url_entry)
         
         return entry_list
@@ -47,6 +48,21 @@ class DatasetLoader:
         benign_list: list[UrlEntry] = self.__getBenignData(BENIGN_URL)
 
         self.dataset: list[UrlEntry] = spam_list + benign_list
+
+    def get_urls_and_labels(self) -> tuple[list[str], list[int]]:
+        """
+        Extract URLs and labels from the dataset.
+        Returns tuple of (urls, labels) where labels are 1 for PHISHING, 0 for BENIGN
+        """
+        urls = []
+        labels = []
+        
+        for entry in self.dataset:
+            urls.append(entry.url)
+            # Convert DataType to binary label: 1 for PHISHING, 0 for BENIGN
+            labels.append(1 if entry.data_type == DataType.PHISHING else 0)
+        
+        return urls, labels
 
 
 
