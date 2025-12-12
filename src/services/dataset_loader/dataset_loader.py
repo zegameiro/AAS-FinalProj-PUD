@@ -1,5 +1,4 @@
-from pydantic import BaseModel,HttpUrl
-from enum import Enum
+from src.models import DataType,UrlEntry
 import requests
 import os
 from io import StringIO
@@ -7,14 +6,6 @@ import polars as pl
 
 SPAM_URL = "http://data.phishtank.com/data/online-valid.csv"
 BENIGN_URL = "https://downloads.majestic.com/majestic_million.csv"
-
-class DataType(Enum):
-    PHISHING = "phishing"
-    BENIGN = "Benign"
-
-class UrlEntry(BaseModel):
-    url: str
-    data_type: DataType
 
 class DatasetLoader:
     dataset_present = False
