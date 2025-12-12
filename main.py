@@ -1,3 +1,7 @@
+from src.services.dataset_loader import fulldataset
+
+
+
 from src.phishing_url_detector import PhishingURLDetector
 
 def main():
