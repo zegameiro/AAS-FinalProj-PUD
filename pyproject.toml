@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "crawlee[all]>=1.2.0",
     "numpy>=2.3.5",
     "pandas>=2.3.3",
     "polars>=1.36.1",

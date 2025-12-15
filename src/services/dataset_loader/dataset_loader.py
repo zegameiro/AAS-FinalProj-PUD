@@ -37,7 +37,7 @@ class DatasetLoader:
 
         for row in tqdm(df.iter_rows(named=True), desc="Loading Benign data", unit="url"):
             entry_url = row["Domain"]
-            entry_url = "http://" + entry_url
+            entry_url = "https://" + entry_url
             url_entry = UrlEntry(url=entry_url,data_type=DataType.BENIGN)
             entry_list.append(url_entry)
         
