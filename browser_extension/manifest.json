@@ -3,16 +3,19 @@
   "name": "Borderify",
   "version": "1.0",
 
-  "description": "Adds a red border to all webpages matching mozilla.org.",
+  "description": "A phishing detection extension.",
 
   "icons": {
     "48": "icons/border-48.png"
   },
-
-  "content_scripts": [
-    {
-      "matches": ["*://*.mozilla.org/*"],
-      "js": ["borderify.js"]
-    }
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>",
+    "tabs",
+    "storage"
   ]
 }
