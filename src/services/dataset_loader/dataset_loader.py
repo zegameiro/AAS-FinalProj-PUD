@@ -4,6 +4,8 @@ import os
 from io import StringIO
 from tqdm import tqdm
 import polars as pl
+import json
+from pathlib import Path
 
 SPAM_URL = "http://data.phishtank.com/data/online-valid.csv"
 BENIGN_URL = "https://downloads.majestic.com/majestic_million.csv"
@@ -42,10 +44,26 @@ class DatasetLoader:
             entry_list.append(url_entry)
         
         return entry_list
+    
+    def __get_project_root(self) -> Path:
+        p = Path(__file__).resolve()
+        for parent in p.parents:
+            if (parent / "pyproject.toml").exists():
+                return parent
+        raise RuntimeError("Project root not found")
 
     def getData(self) -> None:
         spam_list: list[UrlEntry] = self.__getPhishTankData(SPAM_URL)
         benign_list: list[UrlEntry] = self.__getBenignData(BENIGN_URL)
+
+        data_dir = self.__get_project_root() / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(data_dir / "spam.json", "w", encoding="utf-8") as f:
+            json.dump([e.model_dump_json() for e in spam_list], f, indent=2)
+
+        with open(data_dir / "benign.json", "w", encoding="utf-8") as f:
+            json.dump([e.model_dump_json() for e in benign_list], f, indent=2)
 
         self.dataset: list[UrlEntry] = spam_list + benign_list
 

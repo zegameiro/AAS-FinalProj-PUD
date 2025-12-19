@@ -3,6 +3,8 @@ from crawlee.crawlers import PlaywrightCrawler
 from crawlee.configuration import Configuration
 from urllib.parse import urlparse
 from datetime import timedelta
+from src.models import UrlEntry
+import json
 
 MAX_DEPTH = 3
 allowed_domains = {
@@ -23,6 +25,11 @@ def is_allowed(url: str) -> bool:
         return False
 
 async def main():
+    with open("data/benign.json", "r", encoding="utf-8") as f:
+        data = json.load(f)
+    # urls = [UrlEntry(**item).url for item in data]
+    urls = [UrlEntry(**json.loads(item)).url for item in data]
+
     crawler = PlaywrightCrawler(
         max_requests_per_crawl=5000,
         request_handler_timeout=timedelta(seconds=30),
@@ -39,24 +46,14 @@ async def main():
             "a[href]",
             "els => els.map(e => e.href)"
         )
+        with open("/app/data/non_spam_urls.txt", "a") as f:
+            last = ""
+            for u in links:
+                if u != last:
+                    f.write(u + "\n")
+                last = u
 
-        for link in links:
-            if is_allowed(link):
-                # Add to crawl queue in Python Crawlee
-                # await context.crawl_queue.add(link)
-                collected_urls.add(link)
-
-    await crawler.run([
-        "https://www.wikipedia.org",
-        "https://www.bbc.com",
-        "https://www.nytimes.com",
-    ])
-
-    # Save dataset
-    with open("non_spam_urls.txt", "w") as f:
-        for u in sorted(collected_urls):
-            f.write(u + "\n")
-            print(u)
+    await crawler.run(urls)
 
 asyncio.run(main())
 
