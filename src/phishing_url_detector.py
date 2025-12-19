@@ -1,7 +1,7 @@
 from src.url_feature_extractor import URLFeatureExtractor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, f1_score
 from src.constants import *
 from tqdm import tqdm
 import pandas as pd
@@ -17,9 +17,11 @@ class PhishingURLDetector:
             n_estimators=n_estimators,
             random_state=random_state,
             n_jobs=-1,
-            max_depth=20,
-            min_samples_split=10,
-            min_samples_leaf=5
+            max_depth=30,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            max_features='sqrt',
+            class_weight='balanced'  # Handle imbalanced datasets
         )
         self.feature_names = None
 
@@ -42,22 +44,44 @@ class PhishingURLDetector:
 
         x, y = self.prepare_data(urls, labels)
 
+        # Check class distribution
+        unique, counts = np.unique(y, return_counts=True)
+        class_dist = dict(zip(unique, counts))
+        print(f"\nClass distribution: {class_dist}")
+        if len(unique) == 2:
+            imbalance_ratio = max(counts) / min(counts)
+            print(f"Imbalance ratio: {imbalance_ratio:.2f}")
+
         x_train, x_test, y_train, y_test = train_test_split(
             x, y, test_size=test_size, random_state=42, stratify=y
         )
 
-        print(f"Training on {len(x_train)} samples...")
+        print(f"\nTraining on {len(x_train)} samples...")
         self.classifier.fit(x_train, y_train)
 
-        # Evaluate
+        # Evaluate on test set
         y_pred = self.classifier.predict(x_test)
+        y_proba = self.classifier.predict_proba(x_test)[:, 1]
 
         print("\n=== Training Results ===")
         print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+        print(f"F1-Score: {f1_score(y_test, y_pred):.4f}")
+        print(f"ROC-AUC: {roc_auc_score(y_test, y_proba):.4f}")
+        
         print("\nClassification Report:")
         print(classification_report(y_test, y_pred, target_names=['Legitimate', 'Phishing']))
+        
         print("\nConfusion Matrix:")
-        print(confusion_matrix(y_test, y_pred))
+        cm = confusion_matrix(y_test, y_pred)
+        print(cm)
+        print(f"True Negatives: {cm[0][0]}, False Positives: {cm[0][1]}")
+        print(f"False Negatives: {cm[1][0]}, True Positives: {cm[1][1]}")
+
+        # Cross-validation
+        print("\n=== Cross-Validation (5-fold) ===")
+        cv_scores = cross_val_score(self.classifier, x, y, cv=5, scoring='f1')
+        print(f"F1 Scores: {cv_scores}")
+        print(f"Mean F1: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
 
         # Feature importance
         self._print_feature_importance()
@@ -80,6 +104,8 @@ class PhishingURLDetector:
                 'url': url,
                 'prediction': 'Phishing' if pred == 1 else 'Legitimate',
                 'confidence': proba[pred],
+                'phishing_probability': proba[1],
+                'legitimate_probability': proba[0],
                 'homoglyph_warning': homoglyph_warning
             })
         return results
@@ -106,9 +132,14 @@ class PhishingURLDetector:
         if self.feature_extractor._has_mixed_charset(url):
             warnings.append("Mixed character sets detected")
         
+        # Check for brand impersonation
+        domain = url.split('/')[2] if len(url.split('/')) > 2 else ''
+        if self.feature_extractor._check_brand_in_subdomain(domain):
+            warnings.append("Brand name detected in subdomain (possible phishing)")
+        
         return warnings if warnings else None
     
-    def _print_feature_importance(self, top_n=10):
+    def _print_feature_importance(self, top_n=15):
         """Print top N most important features"""
         importances = self.classifier.feature_importances_
         indices = np.argsort(importances)[::-1]
@@ -132,4 +163,3 @@ class PhishingURLDetector:
         self.classifier = data['classifier']
         self.feature_names = data['feature_names']
         print(f"Model loaded from {filepath}")
-
