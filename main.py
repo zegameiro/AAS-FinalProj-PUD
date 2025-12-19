@@ -1,5 +1,5 @@
-from src.phishing_url_detector import PhishingURLDetector
-from src.knn_phishing_detector import KNNPhishingDetector
+from src.ai_models.knn_detector import KNNPhishingDetector
+from src.ai_models.random_forest_detector import RandomForestDetector
 import polars as pl
 from tqdm import tqdm
 import random
@@ -7,7 +7,7 @@ import random
 def retrieve_urls_labels():
     urls = []
     labels = []
-    df = pl.read_csv('archive/dataset.csv')
+    df = pl.read_csv('data/dataset.csv')
     
     # Remove duplicates
     df = df.unique(subset=['URL'])
@@ -23,70 +23,90 @@ def retrieve_urls_labels():
     
     return urls, labels
 
-def create_test_dataset(urls, labels, n_samples=20, balance=True, save_to_file=None):
+def split_train_test_datasets(urls, labels, test_size=0.2, balance_test=True):
     """
-    Create a test dataset from the main dataset.
+    Split dataset into training and test sets WITHOUT overlap.
     
     Args:
         urls: List of all URLs
         labels: List of all labels
-        n_samples: Number of samples to include in test set (default: 20)
-        balance: Whether to balance phishing/legitimate samples (default: True)
-        save_to_file: Optional filename to save test dataset (e.g., 'test_dataset.csv')
+        test_size: Fraction or absolute number for test set
+        balance_test: Whether to balance the test set classes
     
     Returns:
-        tuple: (test_urls, test_labels)
+        tuple: (train_urls, train_labels, test_urls, test_labels)
     """
-
     # Separate phishing and legitimate URLs
-    phishing_urls = [url for url, label in zip(urls, labels) if label == 1]
-    legitimate_urls = [url for url, label in zip(urls, labels) if label == 0]
+    phishing_indices = [i for i, label in enumerate(labels) if label == 1]
+    legitimate_indices = [i for i, label in enumerate(labels) if label == 0]
     
-    test_urls = []
-    test_labels = []
-    
-    if balance:
-        # Get equal numbers of each class
-        n_per_class = n_samples // 2
-        
-        # Randomly sample from each class
-        sampled_phishing = random.sample(phishing_urls, min(n_per_class, len(phishing_urls)))
-        sampled_legitimate = random.sample(legitimate_urls, min(n_per_class, len(legitimate_urls)))
-        
-        test_urls.extend(sampled_phishing)
-        test_labels.extend([1] * len(sampled_phishing))
-        
-        test_urls.extend(sampled_legitimate)
-        test_labels.extend([0] * len(sampled_legitimate))
+    # Determine test set size
+    if test_size < 1:
+        # Fraction
+        n_test_phishing = int(len(phishing_indices) * test_size)
+        n_test_legitimate = int(len(legitimate_indices) * test_size)
     else:
-        # Maintain original class distribution
-        indices = random.sample(range(len(urls)), min(n_samples, len(urls)))
-        test_urls = [urls[i] for i in indices]
-        test_labels = [labels[i] for i in indices]
+        # Absolute number
+        if balance_test:
+            n_test_phishing = int(test_size / 2)
+            n_test_legitimate = int(test_size / 2)
+        else:
+            # Maintain class distribution
+            phishing_ratio = len(phishing_indices) / len(labels)
+            n_test_phishing = int(test_size * phishing_ratio)
+            n_test_legitimate = int(test_size * (1 - phishing_ratio))
     
-    # Shuffle the test set
-    combined = list(zip(test_urls, test_labels))
-    random.shuffle(combined)
-    test_urls, test_labels = zip(*combined)
-    test_urls = list(test_urls)
-    test_labels = list(test_labels)
+    # Randomly sample test indices
+    random.shuffle(phishing_indices)
+    random.shuffle(legitimate_indices)
+    
+    test_phishing_indices = phishing_indices[:n_test_phishing]
+    test_legitimate_indices = legitimate_indices[:n_test_legitimate]
+    
+    train_phishing_indices = phishing_indices[n_test_phishing:]
+    train_legitimate_indices = legitimate_indices[n_test_legitimate:]
+    
+    # Combine and create final datasets
+    test_indices = test_phishing_indices + test_legitimate_indices
+    train_indices = train_phishing_indices + train_legitimate_indices
+    
+    # Shuffle test set
+    random.shuffle(test_indices)
+    
+    # Extract URLs and labels
+    train_urls = [urls[i] for i in train_indices]
+    train_labels = [labels[i] for i in train_indices]
+    test_urls = [urls[i] for i in test_indices]
+    test_labels = [labels[i] for i in test_indices]
     
     # Print statistics
-    print(f"\n=== Test Dataset Created ===")
-    print(f"Total samples: {len(test_urls)}")
-    print(f"Phishing: {sum(test_labels)} ({sum(test_labels)/len(test_labels)*100:.1f}%)")
-    print(f"Legitimate: {len(test_labels) - sum(test_labels)} ({(len(test_labels) - sum(test_labels))/len(test_labels)*100:.1f}%)")
+    print(f"\n=== Dataset Split ===")
+    print(f"Training set: {len(train_urls)} samples")
+    print(f"  - Phishing: {sum(train_labels)} ({sum(train_labels)/len(train_labels)*100:.1f}%)")
+    print(f"  - Legitimate: {len(train_labels) - sum(train_labels)} ({(len(train_labels) - sum(train_labels))/len(train_labels)*100:.1f}%)")
+    print(f"\nTest set: {len(test_urls)} samples")
+    print(f"  - Phishing: {sum(test_labels)} ({sum(test_labels)/len(test_labels)*100:.1f}%)")
+    print(f"  - Legitimate: {len(test_labels) - sum(test_labels)} ({(len(test_labels) - sum(test_labels))/len(test_labels)*100:.1f}%)")
     
-    # Save to file if requested
-    if save_to_file:
-        df = pl.DataFrame({
-            'URL': test_urls,
-            'label': test_labels
-        })
-        df.write_csv(save_to_file)
-        print(f"Test dataset saved to: {save_to_file}")
+    # Verify no overlap
+    train_set = set(train_urls)
+    test_set = set(test_urls)
+    overlap = train_set.intersection(test_set)
+    if overlap:
+        print(f"\n⚠️  WARNING: Found {len(overlap)} overlapping URLs!")
+    else:
+        print(f"\n✓ No overlap between training and test sets")
     
-    return test_urls, test_labels
+    return train_urls, train_labels, test_urls, test_labels
+
+def save_test_dataset(test_urls, test_labels, filename='data/test_dataset.csv'):
+    """Save test dataset to CSV file"""
+    df = pl.DataFrame({
+        'URL': test_urls,
+        'label': test_labels
+    })
+    df.write_csv(filename)
+    print(f"Test dataset saved to: {filename}")
 
 def evaluate_on_test_set(detector, test_urls, test_labels, dataset_name="Test"):
     """Evaluate detector on test dataset"""
@@ -130,14 +150,16 @@ def main():
     print(f"Benign URLs: {len(labels) - sum(labels)}")
     print(f"Phishing ratio: {sum(labels)/len(labels)*100:.2f}%")
 
-    # Create test dataset from the main dataset
-    test_urls, test_labels = create_test_dataset(
+    # Split into training and test sets (NO OVERLAP!)
+    train_urls, train_labels, test_urls, test_labels = split_train_test_datasets(
         urls, 
         labels, 
-        n_samples=100,
-        balance=True,
-        save_to_file='test_dataset.csv'
+        test_size=0.15,  # 15% for testing, 85% for training
+        balance_test=True  # Balance test set classes
     )
+    
+    # Save test dataset for later use
+    save_test_dataset(test_urls, test_labels, 'test_dataset.csv')
 
     # Choose which algorithm to use
     print("\n" + "="*60)
@@ -153,9 +175,11 @@ def main():
         print("\n" + "="*60)
         print("TRAINING RANDOM FOREST")
         print("="*60)
-        rf_detector = PhishingURLDetector(n_estimators=200)
-        rf_detector.train(urls, labels, test_size=0.2)
-        rf_detector.save_model('phishing_detector_rf.pkl')
+        rf_detector = RandomForestDetector(n_estimators=200)
+        # Train ONLY on training set (with internal validation split)
+        rf_detector.train(train_urls, train_labels, test_size=0.2)
+        rf_detector.save_model('models/phishing_detector_rf.pkl')
+        # Evaluate on the held-out test set
         evaluate_on_test_set(rf_detector, test_urls, test_labels, "Random Forest")
     
     if choice in ['2', '3']:
@@ -167,8 +191,10 @@ def main():
         tune = input("\nPerform hyperparameter tuning? (y/n) [default: n]: ").strip().lower() == 'y'
         
         knn_detector = KNNPhishingDetector(n_neighbors=7, weights='distance')
-        knn_detector.train(urls, labels, test_size=0.2, tune_params=tune)
-        knn_detector.save_model('phishing_detector_knn.pkl')
+        # Train ONLY on training set (with internal validation split)
+        knn_detector.train(train_urls, train_labels, test_size=0.2, tune_params=tune)
+        knn_detector.save_model('models/phishing_detector_knn.pkl')
+        # Evaluate on the held-out test set
         evaluate_on_test_set(knn_detector, test_urls, test_labels, "KNN")
 
 
