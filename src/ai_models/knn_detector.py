@@ -3,7 +3,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 
-class KNNPhishingDetector(BasePhishingDetector):
+class KNNDetector(BasePhishingDetector):
     """K-Nearest Neighbors classifier for phishing URL detection"""
 
     def __init__(self, n_neighbors: int = 5, weights: str = 'distance', 

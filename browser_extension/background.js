@@ -1,7 +1,7 @@
 // background.js
 let isEnabled = true;
 let allowedDomains = [];
-const apiEndpoint = "http://127.0.0.1:3000";
+const apiEndpoint = "http://127.0.0.1:3000/scan";
 
 browser.storage.local.get({ extensionEnabled: true, allowedDomains: [] }).then((data) => {
   isEnabled = data.extensionEnabled;
@@ -42,22 +42,13 @@ async function handleRequest(details) {
   }
 
   try{
-    //  TODO: Change to api Call
-    const isBadUrl = url.includes("print");
-    if (isBadUrl) {
-      console.log("Bad URL detected.");
-      browser.tabs.update(details.tabId, {
-        url: browser.runtime.getURL("blocked.html?target="+ url)
-      });
-      
-      return { cancel: true };
-    }
-    
     const data = await fetch(apiEndpoint, {
-      method: "GET",
+      method: "POST",
       headers: {
         "Content-Type": "application/json"
-      }
+      },
+      body: JSON.stringify({ url: url })
+
     }).then((response) =>{
       if (!response.ok){
         throw new Error("API Server Error: " + response.status);
@@ -66,6 +57,15 @@ async function handleRequest(details) {
     });
     
     console.log(data)
+
+    if (data.prediction === "Phishing") {
+      console.log("Bad URL detected.");
+      browser.tabs.update(details.tabId, {
+        url: browser.runtime.getURL("blocked.html?target="+ url)
+      });
+      
+      return { cancel: true };
+    }
   }
   catch (error) {
     console.error("Network error checking URL:", error);
