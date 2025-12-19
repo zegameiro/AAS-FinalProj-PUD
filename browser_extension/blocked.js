@@ -2,7 +2,7 @@ const params = new URLSearchParams(window.location.search);
 const targetUrl = params.get("target");
 
 document.getElementById("msg").textContent =
-  "The site you tried to access was flagged:\n" + targetUrl;
+  "The site you tried to access was flagged for phishing:\n   " + targetUrl;
 
 document.getElementById("proceed").addEventListener("click", async () => {
   if (!targetUrl) return;
