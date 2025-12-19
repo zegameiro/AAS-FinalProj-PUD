@@ -1,48 +1,79 @@
 from src.url_feature_extractor import URLFeatureExtractor
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, f1_score
+from sklearn.preprocessing import StandardScaler
 from src.constants import *
 from tqdm import tqdm
-import pandas as pd
+import polars as pl
 import numpy as np
 import joblib
 
-class PhishingURLDetector:
-    """Random Forest classifier for phishing URL detection"""
+class KNNPhishingDetector:
 
-    def __init__(self, n_estimators: int = 100, random_state: int = 42) -> None:
+    def __init__(self, n_neighbors: int = 5, weights: str= 'distance', metric: str = 'minkowski', n_jobs: int = -1) -> None:
         self.feature_extractor = URLFeatureExtractor()
-        self.classifier = RandomForestClassifier(
-            n_estimators=n_estimators,
-            random_state=random_state,
-            n_jobs=-1,
-            max_depth=30,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            max_features='sqrt',
-            class_weight='balanced'  # Handle imbalanced datasets
+        self.scaler = StandardScaler()
+        self.classifier = KNeighborsClassifier(
+            n_neighbors=n_neighbors,
+            weights=weights,  # 'distance' gives closer neighbors more weight
+            metric=metric,    # 'minkowski' with p=2 is Euclidean distance
+            p=2,              # Power parameter for Minkowski metric
+            algorithm='auto', # Automatically choose best algorithm (ball_tree, kd_tree, brute)
+            n_jobs=n_jobs     # Use all CPU cores
         )
         self.feature_names = None
 
-    def prepare_data(self, urls: list[str], labels) -> tuple:
-        """Convert URLs and labels to feature matrix"""
+    def prepare_data(self, urls: list[str], labels, scale: bool = True) -> tuple:
         print("Extracting features...")
         features_list = self.feature_extractor.extract_features_batch(urls)
-        df = pd.DataFrame(features_list)
+        df = pl.DataFrame(features_list)
 
         if self.feature_names is None:
-            self.feature_names = df.columns.tolist()
+            self.feature_names = df.columns
 
-        x = df[self.feature_names].values
+        x = df[self.feature_names].to_numpy()
         y = np.array(labels)
+        
+        if scale:
+            x = self.scaler.fit_transform(x) if not hasattr(self.scaler, 'mean_') else self.scaler.transform(x)
 
         return x, y
     
-    def train(self, urls: list[str], labels, test_size=0.2) -> None:
-        """Train the Random Forest Classifier"""
+    def tune_hyperparameters(self, x_train, y_train):
+        """Find optimal hyperparameters using GridSearchCV"""
+        print("\n=== Tuning Hyperparameters ===")
+        
+        param_grid = {
+            'n_neighbors': [3, 5, 7, 9, 11, 15],
+            'weights': ['uniform', 'distance'],
+            'metric': ['euclidean', 'manhattan', 'minkowski']
+        }
+        
+        grid_search = GridSearchCV(
+            KNeighborsClassifier(n_jobs=-1),
+            param_grid,
+            cv=5,
+            scoring='f1',
+            n_jobs=-1,
+            verbose=1
+        )
+        
+        grid_search.fit(x_train, y_train)
+        
+        print(f"\nBest parameters: {grid_search.best_params_}")
+        print(f"Best F1 score: {grid_search.best_score_:.4f}")
+        
+        # Update classifier with best parameters
+        self.classifier = grid_search.best_estimator_
+        
+        return grid_search.best_params_
+    
+    def train(self, urls: list[str], labels, test_size=0.2, tune_params=False) -> None:
+        """Train the KNN Classifier"""
 
-        x, y = self.prepare_data(urls, labels)
+        # Fit scaler and prepare data
+        x, y = self.prepare_data(urls, labels, scale=True)
 
         # Check class distribution
         unique, counts = np.unique(y, return_counts=True)
@@ -55,8 +86,14 @@ class PhishingURLDetector:
         x_train, x_test, y_train, y_test = train_test_split(
             x, y, test_size=test_size, random_state=42, stratify=y
         )
+        
+        # Optional hyperparameter tuning
+        if tune_params:
+            self.tune_hyperparameters(x_train, y_train)
 
-        print(f"\nTraining on {len(x_train)} samples...")
+        print(f"\nTraining KNN on {len(x_train)} samples...")
+        print(f"KNN Parameters: n_neighbors={self.classifier.n_neighbors}, weights={self.classifier.weights}, metric={self.classifier.metric}")
+        
         self.classifier.fit(x_train, y_train)
 
         # Evaluate on test set
@@ -79,19 +116,16 @@ class PhishingURLDetector:
 
         # Cross-validation
         print("\n=== Cross-Validation (5-fold) ===")
-        cv_scores = cross_val_score(self.classifier, x, y, cv=5, scoring='f1')
+        cv_scores = cross_val_score(self.classifier, x, y, cv=5, scoring='f1', n_jobs=-1)
         print(f"F1 Scores: {cv_scores}")
         print(f"Mean F1: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
-
-        # Feature importance
-        self._print_feature_importance()
 
         return x_test, y_test, y_pred
 
     def predict(self, urls):
         """Predict if URLs are phishing or legitimate"""
 
-        x, _ = self.prepare_data(urls, labels=[0]*len(urls))
+        x, _ = self.prepare_data(urls, labels=[0]*len(urls), scale=True)
         predictions = self.classifier.predict(x)
         probabilities = self.classifier.predict_proba(x)
 
@@ -138,28 +172,20 @@ class PhishingURLDetector:
             warnings.append("Brand name detected in subdomain (possible phishing)")
         
         return warnings if warnings else None
-    
-    def _print_feature_importance(self, top_n=15):
-        """Print top N most important features"""
-        importances = self.classifier.feature_importances_
-        indices = np.argsort(importances)[::-1]
-        
-        print(f"\n=== Top {top_n} Most Important Features ===")
-        for i in range(min(top_n, len(self.feature_names))):
-            idx = indices[i]
-            print(f"{i+1}. {self.feature_names[idx]}: {importances[idx]:.4f}")
 
     def save_model(self, filepath):
         """Save trained model to disk"""
         joblib.dump({
             'classifier': self.classifier,
+            'scaler': self.scaler,
             'feature_names': self.feature_names
         }, filepath)
-        print(f"Model saved to {filepath}")
+        print(f"KNN Model saved to {filepath}")
     
     def load_model(self, filepath):
         """Load trained model from disk"""
         data = joblib.load(filepath)
         self.classifier = data['classifier']
+        self.scaler = data['scaler']
         self.feature_names = data['feature_names']
-        print(f"Model loaded from {filepath}")
+        print(f"KNN Model loaded from {filepath}")

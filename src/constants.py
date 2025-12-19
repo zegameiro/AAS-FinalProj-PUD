@@ -1,6 +1,10 @@
 SUSPICIOUS_WORDS = [
     'login', 'signin', 'account', 'update', 'verify', 'secure',
-    'banking', 'confirm', 'password', 'admin', 'paypal', 'ebay'
+    'banking', 'confirm', 'password', 'admin', 'paypal', 'ebay',
+    'suspended', 'locked', 'unusual', 'click', 'urgent', 'expire',
+    'refund', 'prize', 'winner', 'claim', 'billing', 'wallet',
+    'crypto', 'bitcoin', 'alert', 'warning', 'limited', 'restore',
+    'validate', 'authenticate', 'unauthorized', 'session', 'expire'
 ]
 
 HOMOGLYPH_MAP = {
@@ -33,7 +37,7 @@ HOMOGLYPH_MAP = {
 }
 
 URL_PROPERTIES = {
-    'url_length': '.',
+    'dot_count': '.',
     'dash_count': '-',
     'underscore_count': '_',
     'slash_count': '/',
@@ -51,3 +55,27 @@ URL_PROPERTIES = {
     'dollar_count': '$',
     'percent_count': '%',
 }
+
+# TLD classifications
+SUSPICIOUS_TLDS = ['.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.work', 
+                   '.click', '.link', '.stream', '.download', '.racing', '.science']
+
+TRUSTED_TLDS = ['.gov', '.edu', '.mil']
+
+COMMON_TLDS = ['.com', '.net', '.org', '.co', '.uk', '.de', '.fr', '.it', '.es']
+
+# Known brands for impersonation detection
+KNOWN_BRANDS = [
+    'google', 'facebook', 'microsoft', 'apple', 'amazon', 
+    'paypal', 'netflix', 'instagram', 'twitter', 'linkedin',
+    'ebay', 'yahoo', 'outlook', 'live', 'icloud',
+    'dropbox', 'github', 'reddit', 'tumblr', 'pinterest',
+    'spotify', 'adobe', 'oracle', 'salesforce', 'zoom'
+]
+
+# URL shortening services
+URL_SHORTENERS = [
+    'bit.ly', 'tinyurl.com', 'goo.gl', 't.co', 'ow.ly',
+    'is.gd', 'buff.ly', 'adf.ly', 'bit.do', 'short.link',
+    'tiny.cc', 'tr.im', 'cli.gs', 'u.to', 'rb.gy'
+]
