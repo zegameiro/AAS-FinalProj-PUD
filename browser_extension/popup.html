@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 320px; padding: 15px; font-family: sans-serif; }
+    
+    /* MASTER SWITCH STYLES */
+    .control-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #eee;
+    }
+    .status-active { color: green; font-weight: bold; }
+    .status-disabled { color: red; font-weight: bold; }
+
+    #toggle-global-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    /* Button Colors */
+    .btn-turn-off { background-color: #ffe6e6; color: #cc0000; }
+    .btn-turn-on { background-color: #e6ffe6; color: #006600; }
+
+    /* LIST STYLES (Existing) */
+    #domain-list { list-style: none; padding: 0; }
+    .domain-item {
+      display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;
+    }
+    .remove-btn {
+      background-color: #ff4d4d; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="control-panel">
+    <span id="status-text" class="status-active">Status: ACTIVE</span>
+    <button id="toggle-global-btn" class="btn-turn-off">Disable</button>
+  </div>
+
+  <h3>Allowed Domains</h3>
+  <ul id="domain-list"></ul>
+  <p id="empty-msg" style="display:none; color: #888;">No allowed domains.</p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

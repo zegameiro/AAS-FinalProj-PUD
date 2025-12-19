@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Borderify",
+  "name": "Url Phishing Detector",
   "version": "1.0",
 
   "description": "A phishing detection extension.",
@@ -17,5 +17,10 @@
     "<all_urls>",
     "tabs",
     "storage"
-  ]
+  ],
+  "browser_action": {
+    "default_icon": "icons/border-48.png",
+    "default_title": "Security Settings",
+    "default_popup": "popup.html"
+  }
 }

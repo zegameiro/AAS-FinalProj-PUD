@@ -1,6 +1,31 @@
 // background.js
+let isEnabled = true;
+let allowedDomains = [];
+
+browser.storage.local.get({ extensionEnabled: true, allowedDomains: [] }).then((data) => {
+  isEnabled = data.extensionEnabled;
+  allowedDomains = data.allowedDomains;
+});
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area === "local") {
+    if (changes.extensionEnabled) {
+      isEnabled = changes.extensionEnabled.newValue;
+      console.log("Extension enabled:", isEnabled);
+    }
+    if (changes.allowedDomains) {
+      allowedDomains = changes.allowedDomains.newValue;
+    }
+  }
+});
+
 
 async function handleRequest(details) {
+
+  if (!isEnabled) {
+    return { cancel: false };
+  }
+
   const url = details.url;
 
   const hostname = new URL(url).hostname;
@@ -23,11 +48,9 @@ async function handleRequest(details) {
       url: browser.runtime.getURL("blocked.html?target="+ url)
     });
     
-    // 3. IF BAD: Redirect to the internal page that contains the alert
     return { cancel: true };
   }
   console.log("All Good!!!")
-  // 4. IF GOOD: Do nothing. The browser loads the page instantly.
   return { cancel: false };
 }
 
