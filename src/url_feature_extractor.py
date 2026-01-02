@@ -23,12 +23,12 @@ class URLFeatureExtractor:
         features['letter_count'] = sum(1 for c in url if c.isalpha())
         features['uppercase_count'] = sum(1 for c in url if c.isupper())
 
-        # Entropy Calculation
-        features['entropy'] = self._calculate_entropy(url)
-
         # Parse URL components
         parsed = urlparse(url)
         domain = parsed.netloc
+        
+        # Entropy Calculation (only on domain to avoid false positives from query parameters)
+        features['entropy'] = self._calculate_entropy(domain)
         path = parsed.path
         query = parsed.query
         
