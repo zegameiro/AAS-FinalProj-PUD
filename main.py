@@ -1,6 +1,6 @@
 from src.ai_models.knn_detector import KNNDetector
 from src.ai_models.random_forest_detector import RandomForestDetector
-from src.services.dataset_loader.dataset_loader import DatasetLoader
+from src.services.dataset_loader import fulldataset
 import random
 
 def evaluate_on_test_set(detector, test_urls, test_labels, model_name: str):
@@ -35,11 +35,7 @@ def evaluate_on_test_set(detector, test_urls, test_labels, model_name: str):
 def main():
     # Set random seed for reproducibility
     random.seed(42)
-    
-    # Load data
-    print("Loading dataset...")
-    dataset_loader = DatasetLoader()
-    urls, labels = dataset_loader.get_urls_and_labels()
+    urls, labels = fulldataset.get_urls_and_labels()
     
     print(f"\nTotal URLs loaded: {len(urls)}")
     print(f"Phishing URLs: {sum(labels)}")
@@ -47,14 +43,11 @@ def main():
     print(f"Phishing ratio: {sum(labels)/len(labels)*100:.2f}%")
 
     # Split into training and test sets (NO OVERLAP!)
-    train_urls, train_labels, test_urls, test_labels = dataset_loader.split_train_test_datasets(
+    train_urls, train_labels, test_urls, test_labels = fulldataset.split_train_test_datasets(
         test_size=0.15,  # 15% for testing, 85% for training
         balance_test=True,  # Balance test set classes
         random_seed=42
     )
-    
-    # Save test dataset for later use
-    dataset_loader.save_test_dataset(test_urls, test_labels, 'test_dataset.csv')
 
     # Choose which algorithm to use
     print("\n" + "="*60)

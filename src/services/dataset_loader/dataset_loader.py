@@ -23,8 +23,47 @@ class DatasetLoader:
     def __get_phishtank_data(self, url: str) -> list[UrlEntry]:
         entry_list: list[UrlEntry] = []
         
+        # First, try to load from local files
+        local_spam_exists = os.path.exists('data/spam.json')
+        local_dataset_exists = os.path.exists('data/dataset.csv')
+        
+        if local_spam_exists or local_dataset_exists:
+            print("Local phishing data files found. Loading from local files...")
+            
+            # Load from spam.json if it exists
+            if local_spam_exists:
+                try:
+                    with open('data/spam.json', 'r') as f:
+                        spam_data = json.load(f)
+                        for entry_str in tqdm(spam_data, desc="Loading local PhishTank data", unit="url"):
+                            entry = json.loads(entry_str)  # Parse the JSON string
+                            entry_url = entry["url"]
+                            url_entry = UrlEntry(url=entry_url, data_type=DataType.PHISHING)
+                            entry_list.append(url_entry)
+                    print(f"Loaded {len(entry_list)} phishing URLs from spam.json")
+                except Exception as e:
+                    print(f"Error loading spam.json: {e}")
+            
+            # Load from dataset.csv if it exists
+            if local_dataset_exists:
+                try:
+                    df_local = pl.read_csv('data/dataset.csv')
+                    df_local = df_local.unique(subset=['URL'])
+                    initial_count = len(entry_list)
+                    for row in tqdm(df_local.iter_rows(named=True), desc="Loading local dataset", unit="url"):
+                        if int(row['label']) == 0:  # Phishing label
+                            url_1 = row['URL']
+                            url_entry = UrlEntry(url=url_1, data_type=DataType.PHISHING)
+                            entry_list.append(url_entry)
+                    print(f"Loaded {len(entry_list) - initial_count} phishing URLs from dataset.csv")
+                except Exception as e:
+                    print(f"Error loading dataset.csv: {e}")
+            
+            return entry_list
+        
+        # If local files don't exist, fetch from online source
+        print(f"Local files not found. Fetching PhishTank data from {url}...")
         try:
-            print(f"Fetching PhishTank data from {url}...")
             data = requests.get(url, timeout=30)
             data.raise_for_status()  # Raise exception for bad status codes
             
@@ -52,28 +91,7 @@ class DatasetLoader:
         
         except requests.RequestException as e:
             print(f"Error fetching PhishTank data: {e}")
-            print("Falling back to local PhishTank data if available...")
-
-            with open('data/spam.json', 'r') as f:
-                spam_data = json.load(f)
-                for entry_str in tqdm(spam_data, desc="Loading local PhishTank data", unit="url"):
-                    entry = json.loads(entry_str)  # Parse the JSON string
-                    entry_url = entry["url"]
-                    url_entry = UrlEntry(url=entry_url, data_type=DataType.PHISHING)
-                    entry_list.append(url_entry)
-        
-        # Extract phishing URLs from dataset.csv
-        try:
-            df_local = pl.read_csv('data/dataset.csv')
-            df_local = df_local.unique(subset=['URL'])
-            for row in tqdm(df_local.iter_rows(named=True), desc="Loading local dataset", unit="url"):
-                if int(row['label']) == 0:  # Phishing label
-                    url_1 = row['URL']
-                    url_entry = UrlEntry(url=url_1, data_type=DataType.PHISHING)
-                    entry_list.append(url_entry)
-            print(f"Loaded {len([r for r in df_local.iter_rows(named=True) if int(r['label']) == 0])} phishing URLs from local dataset")
-        except Exception as e:
-            print(f"Error loading local dataset: {e}")
+            print("Unable to fetch online data and no local files available.")
         
         return entry_list
 
@@ -153,9 +171,23 @@ class DatasetLoader:
         # Get URLs and labels from dataset
         urls, labels = self.get_urls_and_labels()
         
+        # Deduplicate URLs (keep the first occurrence of each URL)
+        url_to_label = {}
+        for url, label in zip(urls, labels):
+            if url not in url_to_label:
+                url_to_label[url] = label
+        
+        print(f"Original dataset: {len(urls)} entries")
+        print(f"After deduplication: {len(url_to_label)} unique URLs")
+        print(f"Duplicates removed: {len(urls) - len(url_to_label)}")
+        
+        # Create lists from deduplicated data
+        unique_urls = list(url_to_label.keys())
+        unique_labels = [url_to_label[url] for url in unique_urls]
+        
         # Separate phishing and legitimate URLs
-        phishing_indices = [i for i, label in enumerate(labels) if label == 1]
-        legitimate_indices = [i for i, label in enumerate(labels) if label == 0]
+        phishing_indices = [i for i, label in enumerate(unique_labels) if label == 1]
+        legitimate_indices = [i for i, label in enumerate(unique_labels) if label == 0]
         
         # Determine test set size
         if test_size < 1:
@@ -190,11 +222,11 @@ class DatasetLoader:
         # Shuffle test set
         random.shuffle(test_indices)
         
-        # Extract URLs and labels
-        train_urls = [urls[i] for i in train_indices]
-        train_labels = [labels[i] for i in train_indices]
-        test_urls = [urls[i] for i in test_indices]
-        test_labels = [labels[i] for i in test_indices]
+        # Extract URLs and labels from deduplicated data
+        train_urls = [unique_urls[i] for i in train_indices]
+        train_labels = [unique_labels[i] for i in train_indices]
+        test_urls = [unique_urls[i] for i in test_indices]
+        test_labels = [unique_labels[i] for i in test_indices]
         
         # Print statistics
         print(f"\n=== Dataset Split ===")

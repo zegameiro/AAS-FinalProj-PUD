@@ -68,9 +68,6 @@ class BasePhishingDetector(ABC):
         # Split data
         x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=test_size, random_state=42, stratify=y)
 
-        # Call subclass-specific pre-training hook
-        self._pre_train_hook(x_train, y_train, **kwargs)
-
         # Train
         print(f"\n Training {self._get_model_name()} on {len(x_train)} samples...")
         self._print_model_params()
@@ -78,14 +75,9 @@ class BasePhishingDetector(ABC):
 
         self._evaluate(x_test, y_test, x, y)
 
-
-
-    def _pre_train_hook(self, x_train, y_train, **kwargs):
-        """Hook for subclasses to implement pre-training steps if needed."""
-        pass
-
     def _print_model_params(self):
         """Print model-specific parameters. Subclasses can override."""
+        pass
 
     def _evaluate(self, x_test, y_test, x_full, y_full):
         """Evaluate the trained model"""

@@ -3,7 +3,7 @@ from src.ai_models import get_classifier,Action,Classifier
 
 app = Flask(__name__)
 
-model = get_classifier(Classifier.KNN,Action.PREDICT)
+model = get_classifier(Classifier.RANDOM_FOREST, Action.PREDICT)
 
 @app.route("/")
 def hello_world():

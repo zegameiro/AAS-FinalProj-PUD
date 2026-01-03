@@ -26,14 +26,16 @@ class URLFeatureExtractor:
         # Parse URL components
         parsed = urlparse(url)
         domain = parsed.netloc
-        
-        # Entropy Calculation (only on domain to avoid false positives from query parameters)
-        features['entropy'] = self._calculate_entropy(domain)
         path = parsed.path
         query = parsed.query
         
+        # Entropy Calculation (only on domain to avoid false positives from query parameters)
+        features['entropy'] = self._calculate_entropy(domain)
+        
         # Domain features
-        features['subdomain_count'] = domain.count('.') - 1 if domain else 0
+        # Count subdomains: google.com has 0, sub.google.com has 1, deep.sub.google.com has 2
+        dot_count = domain.count('.')
+        features['subdomain_count'] = max(0, dot_count - 1) if dot_count > 0 else 0
         
         # Protocol features
         features['has_https'] = int(url.startswith('https://'))
@@ -42,8 +44,10 @@ class URLFeatureExtractor:
         # IP address in URL
         features['has_ip'] = int(self._has_ip_address(domain))
         
-        # Port number detection
-        features['has_port'] = int(':' in domain and domain.split(':')[-1].isdigit())
+        # Port number detection (check if domain has port after removing protocol)
+        # domain might be 'example.com:8080' or just 'example.com'
+        domain_parts = domain.split(':')
+        features['has_port'] = int(len(domain_parts) > 1 and domain_parts[-1].isdigit())
         
         # TLD features
         tld = self._extract_tld(domain)
@@ -51,9 +55,17 @@ class URLFeatureExtractor:
         features['has_trusted_tld'] = int(any(tld.endswith(tt) for tt in TRUSTED_TLDS))
         features['tld_length'] = len(tld.replace('.', ''))
 
-        # Suspicious words
-        url_lower = url.lower()
-        features['suspicious_word_count'] = sum(1 for word in SUSPICIOUS_WORDS if word in url_lower)
+        # Suspicious words - focus on domain and path, not query params
+        # Query params often have legitimate words like 'login' or 'account'
+        domain_lower = domain.lower()
+        path_lower = path.lower()
+        
+        # Count in domain (more suspicious) - weight x2
+        domain_suspicious = sum(2 for word in SUSPICIOUS_WORDS if word in domain_lower)
+        # Count in path (less suspicious) - weight x1
+        path_suspicious = sum(1 for word in SUSPICIOUS_WORDS if word in path_lower)
+        
+        features['suspicious_word_count'] = domain_suspicious + path_suspicious
 
         # Double slash in path
         features['double_slash_in_path'] = int('//' in path)
@@ -74,16 +86,22 @@ class URLFeatureExtractor:
         features['avg_domain_token_length'] = np.mean([len(t) for t in domain_tokens]) if domain_tokens else 0
         features['max_domain_token_length'] = max([len(t) for t in domain_tokens]) if domain_tokens else 0
 
-        # Path analysis
+        # Path analysis - use ratios instead of absolute lengths
         path_tokens = [t for t in path.split('/') if t]
         features['path_token_count'] = len(path_tokens)
         features['avg_path_token_length'] = np.mean([len(t) for t in path_tokens]) if path_tokens else 0
         features['path_length'] = len(path)
         features['path_depth'] = path.count('/')
+        # Add ratio of path to total URL (phishing often has short paths)
+        features['path_to_url_ratio'] = len(path) / len(url) if len(url) > 0 else 0
         
-        # Query string analysis
+        # Query string analysis - use ratios for better generalization
         features['query_length'] = len(query)
         features['query_param_count'] = query.count('&') + 1 if query else 0
+        # Ratio of query to total URL (helps distinguish legitimate vs suspicious)
+        features['query_to_url_ratio'] = len(query) / len(url) if len(url) > 0 else 0
+        # Domain length ratio
+        features['domain_to_url_ratio'] = len(domain) / len(url) if len(url) > 0 else 0
         
         # Fragment presence
         features['has_fragment'] = int(bool(parsed.fragment))
@@ -111,7 +129,7 @@ class URLFeatureExtractor:
         
         # Brand impersonation detection
         features['brand_in_subdomain'] = int(self._check_brand_in_subdomain(domain))
-        features['brand_in_path'] = int(any(brand in url_lower for brand in KNOWN_BRANDS))
+        features['brand_in_path'] = int(any(brand in path_lower for brand in KNOWN_BRANDS))
         features['levenshtein_to_brand'] = self._min_levenshtein_distance(domain)
         
         # URL shortener detection
@@ -125,19 +143,30 @@ class URLFeatureExtractor:
         # Statistical features
         features['char_diversity'] = len(set(url)) / features['url_length'] if features['url_length'] > 0 else 0
         
-        # Redirect indicators
-        features['redirect_count'] = url.count('http://') + url.count('https://') - 1
+        # Redirect indicators (multiple http/https in URL suggests redirects)
+        # Normal URL has 1 occurrence, redirects have 2+
+        protocol_count = url.count('http://') + url.count('https://')
+        features['redirect_count'] = max(0, protocol_count - 1)
 
         return features
 
     def _extract_tld(self, domain):
-        """Extract TLD from domain"""
+        """Extract TLD from domain (handles .co.uk, .com, etc.)"""
         if not domain:
             return ''
-        parts = domain.split('.')
-        if len(parts) >= 2:
-            return '.' + '.'.join(parts[-2:]) if len(parts[-1]) <= 3 and len(parts[-2]) <= 3 else '.' + parts[-1]
-        return '.' + parts[-1] if parts else ''
+        # Remove port if present
+        domain_clean = domain.split(':')[0]
+        parts = domain_clean.split('.')
+        
+        if len(parts) < 2:
+            return '.' + parts[-1] if parts else ''
+        
+        # Check for two-part TLDs like .co.uk, .com.br, .ac.uk
+        if len(parts) >= 2 and len(parts[-1]) <= 3 and len(parts[-2]) <= 3:
+            return '.' + '.'.join(parts[-2:])
+        
+        # Standard single TLD like .com, .org
+        return '.' + parts[-1]
 
     def _check_brand_in_subdomain(self, domain):
         """Check if brand name appears in subdomain (phishing indicator)"""
@@ -150,13 +179,30 @@ class URLFeatureExtractor:
 
     def _min_levenshtein_distance(self, domain):
         """Calculate minimum Levenshtein distance to known brands"""
-        domain_clean = re.sub(r'[^a-z]', '', domain.lower())
-        if not domain_clean:
+        if not domain:
+            return 100
+        
+        # Extract domain name without TLD (e.g., 'google' from 'google.com')
+        # Remove port first
+        domain_clean = domain.split(':')[0]
+        parts = domain_clean.split('.')
+        
+        # For multi-part TLDs (.co.uk), use the part before TLD
+        if len(parts) >= 3 and len(parts[-1]) <= 3 and len(parts[-2]) <= 3:
+            domain_name = parts[-3]  # e.g., 'example' from 'example.co.uk'
+        elif len(parts) >= 2:
+            domain_name = parts[-2]  # e.g., 'google' from 'google.com'
+        else:
+            domain_name = parts[0] if parts else ''
+        
+        # Clean and compare
+        domain_name = re.sub(r'[^a-z]', '', domain_name.lower())
+        if not domain_name:
             return 100
         
         min_dist = 100
         for brand in KNOWN_BRANDS:
-            dist = self._levenshtein(domain_clean, brand)
+            dist = self._levenshtein(domain_name, brand)
             if dist < min_dist:
                 min_dist = dist
         return min_dist
@@ -234,11 +280,21 @@ class URLFeatureExtractor:
         return charset_count > 1
 
     def _calculate_entropy(self, text: str) -> float:
-        """Calculate Shannon entropy of text"""
-        if not text:
+        """Calculate Shannon entropy of text (higher = more random/suspicious)"""
+        if not text or len(text) == 0:
             return 0.0
-        prob = [float(text.count(c)) / len(text) for c in set(text)]
-        entropy = -sum([p * np.log2(p) for p in prob])
+        
+        # Count character frequencies
+        char_counts = Counter(text)
+        text_len = len(text)
+        
+        # Calculate probabilities and entropy
+        entropy = 0.0
+        for count in char_counts.values():
+            if count > 0:
+                prob = count / text_len
+                entropy -= prob * np.log2(prob)
+        
         return entropy
     
     def _has_ip_address(self, domain: str) -> bool:
