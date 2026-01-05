@@ -61,7 +61,7 @@ async function handleRequest(details) {
     if (data.prediction === "Phishing") {
       console.log("Bad URL detected.");
       browser.tabs.update(details.tabId, {
-        url: browser.runtime.getURL("blocked.html?target="+ url)
+        url: browser.runtime.getURL("blocked.html?target="+ url +"&phishing_prob="+ data.phishing_probability)
       });
       
       return { cancel: true };
