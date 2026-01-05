@@ -69,7 +69,7 @@ async function handleRequest(details) {
   }
   catch (error) {
     console.error("Network error checking URL:", error);
-    return { cancel: true }; 
+    return { cancel: false }; 
   }
 
   console.log("All Good!!!")
