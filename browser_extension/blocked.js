@@ -1,8 +1,12 @@
 const params = new URLSearchParams(window.location.search);
 const targetUrl = params.get("target");
+const prob = params.get("phishing_prob");
 
 document.getElementById("msg").textContent =
   "The site you tried to access was flagged for phishing:\n   " + targetUrl;
+
+document.getElementById("prob").textContent =
+  "The phishing probability is:\n   " + parseInt(prob * 100) + "%";
 
 document.getElementById("proceed").addEventListener("click", async () => {
   if (!targetUrl) return;
