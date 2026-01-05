@@ -5,7 +5,6 @@ from pathlib import Path
 from io import StringIO
 from tqdm import tqdm
 
-import requests
 import os
 import polars as pl
 import json
@@ -16,98 +15,118 @@ class DatasetLoader:
     dataset: list[UrlEntry]
 
     def __init__(self):
+        self.counter = 0
         if os.path.isdir("data"):
             self.dataset_present = True
         self.get_data()
 
-    def __get_phishtank_data(self, url: str) -> list[UrlEntry]:
+    def __get_phishtank_data(self) -> list[UrlEntry]:
         entry_list: list[UrlEntry] = []
-        
-        # First, try to load from local files
-        local_spam_exists = os.path.exists('data/spam.json')
-        local_dataset_exists = os.path.exists('data/dataset.csv')
-        
-        if local_spam_exists or local_dataset_exists:
-            print("Local phishing data files found. Loading from local files...")
-            
-            # Load from spam.json if it exists
-            if local_spam_exists:
-                try:
-                    with open('data/spam.json', 'r') as f:
-                        spam_data = json.load(f)
-                        for entry_str in tqdm(spam_data, desc="Loading local PhishTank data", unit="url"):
-                            entry = json.loads(entry_str)  # Parse the JSON string
-                            entry_url = entry["url"]
-                            url_entry = UrlEntry(url=entry_url, data_type=DataType.PHISHING)
-                            entry_list.append(url_entry)
-                    print(f"Loaded {len(entry_list)} phishing URLs from spam.json")
-                except Exception as e:
-                    print(f"Error loading spam.json: {e}")
-            
-            # Load from dataset.csv if it exists
-            if local_dataset_exists:
-                try:
-                    df_local = pl.read_csv('data/dataset.csv')
-                    df_local = df_local.unique(subset=['URL'])
-                    initial_count = len(entry_list)
-                    for row in tqdm(df_local.iter_rows(named=True), desc="Loading local dataset", unit="url"):
-                        if int(row['label']) == 0:  # Phishing label
-                            url_1 = row['URL']
-                            url_entry = UrlEntry(url=url_1, data_type=DataType.PHISHING)
-                            entry_list.append(url_entry)
-                    print(f"Loaded {len(entry_list) - initial_count} phishing URLs from dataset.csv")
-                except Exception as e:
-                    print(f"Error loading dataset.csv: {e}")
-            
-            return entry_list
-        
-        # If local files don't exist, fetch from online source
-        print(f"Local files not found. Fetching PhishTank data from {url}...")
-        try:
-            data = requests.get(url, timeout=30)
-            data.raise_for_status()  # Raise exception for bad status codes
-            
-            # Debug: Check if we got actual CSV data
-            if len(data.text) < 100:
-                print(f"Warning: Response seems too short ({len(data.text)} bytes)")
-                print(f"Response: {data.text[:200]}")
-            
-            csv_data = StringIO(data.text)
-            
-            # Try to read CSV with error handling
+        url_set = set()
+
+        # Prefer a pre-saved spam.json if available
+        spam_json_path = os.path.join("data", "spam.json")
+        if os.path.exists(spam_json_path):
             try:
-                df = pl.read_csv(csv_data)
-                print(f"Successfully loaded {len(df)} PhishTank URLs")
-            except Exception as csv_error:
-                print(f"Error parsing PhishTank CSV: {csv_error}")
-                print(f"First 500 chars of response: {data.text[:500]}")
-                # Return empty list if PhishTank data fails
-                df = pl.DataFrame()
-            
-            for entry in tqdm(df.iter_rows(named=True), desc="Loading PhishTank data", unit="url"):
-                entry_url = entry["url"]
-                url_entry = UrlEntry(url=entry_url, data_type=DataType.PHISHING)
-                entry_list.append(url_entry)
-        
-        except requests.RequestException as e:
-            print(f"Error fetching PhishTank data: {e}")
-            print("Unable to fetch online data and no local files available.")
-        
+                with open(spam_json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                for item in data:
+                    record = json.loads(item)
+                    url_1 = record.get("url") 
+
+                    if not url_1:
+                        continue
+
+                    if url_1 in url_set:
+                        continue
+
+                    entry_list.append(UrlEntry(id=record.get("id"), url=url_1, data_type=DataType.PHISHING))
+                    url_set.add(url_1)
+
+                print(f"Loaded {len(entry_list)} phishing URLs from local spam.json")
+                return entry_list
+            except Exception as e:
+                print(f"Error loading local spam.json: {e}")
+
+        # If spam.json not available, try online-valid.json and dataset.csv
+        local_online_exists = os.path.exists(os.path.join("data", "online-valid.json"))
+        local_dataset_exists = os.path.exists(os.path.join("data", "dataset.csv"))
+
+        if local_online_exists:
+            try:
+                with open(os.path.join("data", "online-valid.json"), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for item in data:
+                    # attempt to extract url field from each record
+                    if isinstance(item, dict):
+                        url_1 = item.get("url")
+                    else:
+                        url_1 = str(item).strip()
+
+                    if not url_1:
+                        continue
+                    if url_1 in url_set:
+                        continue
+                    entry_list.append(UrlEntry(id=self.counter, url=url_1, data_type=DataType.PHISHING))
+                    url_set.add(url_1)
+                    self.counter += 1
+
+                print(f"Loaded {len(entry_list)} phishing URLs from local online-valid.json")
+            except Exception as e:
+                print(f"Error loading online-valid.json: {e}")
+
+        if local_dataset_exists:
+            try:
+                df = pl.read_csv(os.path.join("data", "dataset.csv"))
+                df_local = df.unique(subset=["URL"])
+                for row in tqdm(df_local.iter_rows(named=True), desc="Loading dataset.csv", unit="url"):
+                    if int(row['label']) == 0: # its phishing
+                        url_1 = row['URL'].strip()
+                        if url_1 in url_set:
+                            continue
+                        entry_list.append(UrlEntry(id=self.counter, url=url_1, data_type=DataType.PHISHING))
+                        url_set.add(url_1)
+                        self.counter += 1
+
+                print(f"Loaded {len(entry_list)} phishing URLs from local dataset.csv")
+            except Exception as e:
+                print(f"Error loading dataset.csv: {e}")
+
         return entry_list
 
     def __get_benign_data(self) -> list[UrlEntry]:
         entry_list: list[UrlEntry] = []
         
+        if os.path.exists('data/benign.json'):
+            try:
+                with open('data/benign.json', 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for item in data:
+                    record = json.loads(item)
+                    url_1 = record.get("url") 
+
+                    if not url_1:
+                        continue
+
+                    entry_list.append(UrlEntry(id=record.get("id"), url=url_1, data_type=DataType.BENIGN))
+
+                print(f"Loaded {len(entry_list)} benign URLs from local benign.json")
+                return entry_list
+            except Exception as e:
+                print(f"Error loading local benign.json: {e}")
+        
         try:
-            with open('data/non_spam_url_filter.txt', 'r') as file:
+            with open('data/non_spam_url_filtered.txt', 'r') as file:
                 for line in file:
                     url_1 = line.strip()
                     if url_1:  # Skip empty lines
-                        url_entry = UrlEntry(url=url_1, data_type=DataType.BENIGN)
+                        url_entry = UrlEntry(id=self.counter, url=url_1, data_type=DataType.BENIGN)
                         entry_list.append(url_entry)
+                        self.counter += 1
             print(f"Loaded {len(entry_list)} benign URLs from local file")
         except Exception as e:
-            print(f"Error loading benign data: {e}")
+            print(f"Error loading non_spam_url_filter.txt: {e}")
         
         return entry_list
     
@@ -134,17 +153,19 @@ class DatasetLoader:
         return urls, labels
 
     def get_data(self) -> None:
-        spam_list: list[UrlEntry] = self.__get_phishtank_data(SPAM_URL)
+        spam_list: list[UrlEntry] = self.__get_phishtank_data()
         benign_list: list[UrlEntry] = self.__get_benign_data()
 
         data_dir = self.__get_project_root() / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(data_dir / "spam_final.json", "w", encoding="utf-8") as f:
-            json.dump([e.model_dump_json() for e in spam_list], f, indent=2)
+        if not os.path.exists(data_dir / "spam.json"):
+            with open(data_dir / "spam.json", "w", encoding="utf-8") as f:
+                json.dump([e.model_dump_json() for e in spam_list], f, indent=2)
 
-        with open(data_dir / "benign.json", "w", encoding="utf-8") as f:
-            json.dump([e.model_dump_json() for e in benign_list], f, indent=2)
+        if not os.path.exists(data_dir / "benign.json"):
+            with open(data_dir / "benign.json", "w", encoding="utf-8") as f:
+                json.dump([e.model_dump_json() for e in benign_list], f, indent=2)
 
         self.dataset: list[UrlEntry] = spam_list + benign_list
         
@@ -153,109 +174,128 @@ class DatasetLoader:
         print(f"Phishing URLs: {len(spam_list)}")
         print(f"Benign URLs: {len(benign_list)}")
 
-    def split_train_test_datasets(self, test_size=0.2, balance_test=True, random_seed=42):
+    def check_url_duplicates(self) -> None:
         """
-        Split dataset into training and test sets WITHOUT overlap.
-        
-        Args:
-            test_size: Fraction or absolute number for test set
-            balance_test: Whether to balance the test set classes
-            random_seed: Random seed for reproducibility
-        
-        Returns:
-            tuple: (train_urls, train_labels, test_urls, test_labels)
+        Diagnose duplicate URLs:
+        - duplicates within phishing
+        - duplicates within benign
+        - overlaps between phishing and benign
         """
-        # Set random seed
-        random.seed(random_seed)
-        
-        # Get URLs and labels from dataset
-        urls, labels = self.get_urls_and_labels()
-        
-        # Deduplicate URLs (keep the first occurrence of each URL)
-        url_to_label = {}
-        for url, label in zip(urls, labels):
-            if url not in url_to_label:
-                url_to_label[url] = label
-        
-        print(f"Original dataset: {len(urls)} entries")
-        print(f"After deduplication: {len(url_to_label)} unique URLs")
-        print(f"Duplicates removed: {len(urls) - len(url_to_label)}")
-        
-        # Create lists from deduplicated data
-        unique_urls = list(url_to_label.keys())
-        unique_labels = [url_to_label[url] for url in unique_urls]
-        
-        # Separate phishing and legitimate URLs
-        phishing_indices = [i for i, label in enumerate(unique_labels) if label == 1]
-        legitimate_indices = [i for i, label in enumerate(unique_labels) if label == 0]
-        
-        # Determine test set size
-        if test_size < 1:
-            # Fraction
-            n_test_phishing = int(len(phishing_indices) * test_size)
-            n_test_legitimate = int(len(legitimate_indices) * test_size)
-        else:
-            # Absolute number
-            if balance_test:
-                n_test_phishing = int(test_size / 2)
-                n_test_legitimate = int(test_size / 2)
-            else:
-                # Maintain class distribution
-                phishing_ratio = len(phishing_indices) / len(labels)
-                n_test_phishing = int(test_size * phishing_ratio)
-                n_test_legitimate = int(test_size * (1 - phishing_ratio))
-        
-        # Randomly sample test indices
-        random.shuffle(phishing_indices)
-        random.shuffle(legitimate_indices)
-        
-        test_phishing_indices = phishing_indices[:n_test_phishing]
-        test_legitimate_indices = legitimate_indices[:n_test_legitimate]
-        
-        train_phishing_indices = phishing_indices[n_test_phishing:]
-        train_legitimate_indices = legitimate_indices[n_test_legitimate:]
-        
-        # Combine and create final datasets
-        test_indices = test_phishing_indices + test_legitimate_indices
-        train_indices = train_phishing_indices + train_legitimate_indices
-        
-        # Shuffle test set
-        random.shuffle(test_indices)
-        
-        # Extract URLs and labels from deduplicated data
-        train_urls = [unique_urls[i] for i in train_indices]
-        train_labels = [unique_labels[i] for i in train_indices]
-        test_urls = [unique_urls[i] for i in test_indices]
-        test_labels = [unique_labels[i] for i in test_indices]
-        
-        # Print statistics
-        print(f"\n=== Dataset Split ===")
-        print(f"Training set: {len(train_urls)} samples")
-        print(f"  - Phishing: {sum(train_labels)} ({sum(train_labels)/len(train_labels)*100:.1f}%)")
-        print(f"  - Legitimate: {len(train_labels) - sum(train_labels)} ({(len(train_labels) - sum(train_labels))/len(train_labels)*100:.1f}%)")
-        print(f"\nTest set: {len(test_urls)} samples")
-        print(f"  - Phishing: {sum(test_labels)} ({sum(test_labels)/len(test_labels)*100:.1f}%)")
-        print(f"  - Legitimate: {len(test_labels) - sum(test_labels)} ({(len(test_labels) - sum(test_labels))/len(test_labels)*100:.1f}%)")
-        
-        # Verify no overlap
-        train_set = set(train_urls)
-        test_set = set(test_urls)
-        overlap = train_set.intersection(test_set)
-        if overlap:
-            print(f"\n⚠️  WARNING: Found {len(overlap)} overlapping URLs!")
-        else:
-            print(f"\n✓ No overlap between training and test sets")
-        
-        return train_urls, train_labels, test_urls, test_labels
 
-    def save_test_dataset(self, test_urls, test_labels, filename='data/test_dataset.csv'):
-        """Save test dataset to CSV file"""
-        df = pl.DataFrame({
-            'URL': test_urls,
-            'label': test_labels
-        })
-        df.write_csv(filename)
-        print(f"Test dataset saved to: {filename}")
+        phishing_urls = [e.url for e in self.dataset if e.data_type == DataType.PHISHING]
+        benign_urls = [e.url for e in self.dataset if e.data_type == DataType.BENIGN]
+
+        phishing_set = set(phishing_urls)
+        benign_set = set(benign_urls)
+
+        # --------------------------------------------------
+        # 1. Internal duplicates (same class)
+        # --------------------------------------------------
+        phishing_dupes = len(phishing_urls) - len(phishing_set)
+        benign_dupes = len(benign_urls) - len(benign_set)
+
+        # --------------------------------------------------
+        # 2. Cross-class overlap (VERY important)
+        # --------------------------------------------------
+        cross_overlap = phishing_set.intersection(benign_set)
+
+        # --------------------------------------------------
+        # 3. Report
+        # --------------------------------------------------
+        print("\n=== URL Duplication Report ===")
+        print(f"Total phishing URLs: {len(phishing_urls)}")
+        print(f"Unique phishing URLs: {len(phishing_set)}")
+        print(f"Duplicate phishing URLs: {phishing_dupes}\n")
+
+        print(f"\nTotal benign URLs: {len(benign_urls)}")
+        print(f"Unique benign URLs: {len(benign_set)}")
+        print(f"Duplicate benign URLs: {benign_dupes}")
+        # Print duplicates if any
+        if benign_dupes > 0:
+            print("\n⚠️ Example duplicate benign URLs:")
+            seen = set()
+            for url in benign_urls:
+                if url in seen:
+                    print(f"  - {url}")
+                else:
+                    seen.add(url)
+
+        print(f"\nCross-class overlaps (phishing == benign): {len(cross_overlap)}")
+
+        if cross_overlap:
+            print("\n⚠️ Example overlapping URLs:")
+            for url in list(cross_overlap)[:10]:
+                print(f"  - {url}")
+
+        return cross_overlap
+
+    def split_train_eval(
+        self,
+        train_percentage: float = 0.8
+    ) -> tuple[list[UrlEntry], list[UrlEntry]]:
+        """
+        Split dataset into train and evaluation sets with:
+        - No overlapping URLs
+        - Percentage-based sizing
+        - Same phishing/benign distribution in both sets (stratified)
+
+        :param train_percentage: Fraction of data to use for training (0 < p < 1)
+        :param seed: Random seed for reproducibility
+        :return: (train_dataset, eval_dataset)
+        """
+
+        if not 0 < train_percentage < 1:
+            raise ValueError("train_percentage must be between 0 and 1")
+
+        cross_overlaps = self.check_url_duplicates()
+        if cross_overlaps:
+            self.dataset = [
+                e for e in self.dataset
+                if not (e.url in cross_overlaps and e.data_type == DataType.BENIGN)
+            ]
+            print(f"Removed {len(cross_overlaps)} overlapping URLs from benign class.")
+
+        # Separate by class
+        phishing_entries = [e for e in self.dataset if e.data_type == DataType.PHISHING]
+        benign_entries = [e for e in self.dataset if e.data_type == DataType.BENIGN]
+
+        # Shuffle each class independently
+        random.shuffle(phishing_entries)
+        random.shuffle(benign_entries)
+
+        # Compute split sizes
+        phishing_train_size = int(len(phishing_entries) * train_percentage)
+        benign_train_size = int(len(benign_entries) * train_percentage)
+
+        # Split each class
+        phishing_train = phishing_entries[:phishing_train_size]
+        phishing_eval = phishing_entries[phishing_train_size:]
+
+        benign_train = benign_entries[:benign_train_size]
+        benign_eval = benign_entries[benign_train_size:]
+
+        # Combine classes
+        train_dataset = phishing_train + benign_train
+        eval_dataset = phishing_eval + benign_eval
+
+        # Final shuffle so model doesn't see ordered classes
+        random.shuffle(train_dataset)
+        random.shuffle(eval_dataset)
+
+        # Safety check: ensure no overlap
+        train_urls = {e.url for e in train_dataset}
+        eval_urls = {e.url for e in eval_dataset}
+
+        if train_urls & eval_urls:
+            raise RuntimeError("Train and evaluation datasets overlap!")
+
+        print("\n=== Dataset Split ===")
+        print(f"Train size: {len(train_dataset)}")
+        print(f"  Phishing: {len(phishing_train)} | Benign: {len(benign_train)}")
+        print(f"Eval size: {len(eval_dataset)}")
+        print(f"  Phishing: {len(phishing_eval)} | Benign: {len(benign_eval)}")
+
+        return train_dataset, eval_dataset
 
     def evaluate_on_test_set(self, detector, test_urls, test_labels, dataset_name="Test"):
         """Evaluate detector on test dataset"""
