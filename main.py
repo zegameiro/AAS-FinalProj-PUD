@@ -31,11 +31,10 @@ def evaluate_on_test_set(detector, test_urls, test_labels, model_name: str):
         print(f"\n{correct_symbol} URL: {result['url'][:60]}...")
         print(f"  True: {true_class} | Predicted: {result['prediction']} | Confidence: {result['confidence']:.4f}")
         if result['homoglyph_warning']:
-            print(f"  ⚠️  Warnings: {', '.join(result['homoglyph_warning'])}")
+            print(f"    Warnings: {', '.join(result['homoglyph_warning'])}")
 
 def main():
-    # Set random seed for reproducibility
-    random.seed(42)
+    
     urls, labels = fulldataset.get_urls_and_labels()
     
     print(f"\nTotal URLs loaded: {len(urls)}")
@@ -43,7 +42,6 @@ def main():
     print(f"Benign URLs: {len(labels) - sum(labels)}")
     print(f"Phishing ratio: {sum(labels)/len(labels)*100:.2f}%")
 
-    # Split into training and test sets
     train_set, eval_set = fulldataset.split_train_eval(
         train_percentage=0.85  # 85% for training, 15% for testing
     )
@@ -54,7 +52,6 @@ def main():
     test_urls = [entry.url for entry in eval_set]
     test_labels = [1 if entry.data_type == DataType.PHISHING else 0 for entry in eval_set]
 
-    # Choose which algorithm to use
     print("\n" + "="*60)
     print("Choose Algorithm:")
     print("1. Random Forest")
@@ -69,10 +66,8 @@ def main():
         print("TRAINING RANDOM FOREST")
         print("="*60)
         rf_detector = RandomForestDetector(n_estimators=200)
-        # Train ONLY on training set (with internal validation split)
         rf_detector.train(train_urls, train_labels, test_size=0.2)
         rf_detector.save_model('models/phishing_detector_rf.pkl')
-        # Evaluate on the held-out test set
         evaluate_on_test_set(rf_detector, test_urls, test_labels, "Random Forest")
     
     if choice in ['2', '3']:
@@ -80,14 +75,11 @@ def main():
         print("TRAINING K-NEAREST NEIGHBORS")
         print("="*60)
         
-        # Ask if user wants hyperparameter tuning
         tune = input("\nPerform hyperparameter tuning? (y/n) [default: n]: ").strip().lower() == 'y'
         
         knn_detector = KNNDetector(n_neighbors=7, weights='distance')
-        # Train ONLY on training set (with internal validation split)
         knn_detector.train(train_urls, train_labels, test_size=0.2, tune_params=tune)
         knn_detector.save_model('models/phishing_detector_knn.pkl')
-        # Evaluate on the held-out test set
         evaluate_on_test_set(knn_detector, test_urls, test_labels, "KNN")
 
 

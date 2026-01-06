@@ -1,8 +1,6 @@
 from src.models import DataType, UrlEntry
-from src.constants import SPAM_URL
 
 from pathlib import Path
-from io import StringIO
 from tqdm import tqdm
 
 import os
@@ -175,12 +173,6 @@ class DatasetLoader:
         print(f"Benign URLs: {len(benign_list)}")
 
     def check_url_duplicates(self) -> None:
-        """
-        Diagnose duplicate URLs:
-        - duplicates within phishing
-        - duplicates within benign
-        - overlaps between phishing and benign
-        """
 
         phishing_urls = [e.url for e in self.dataset if e.data_type == DataType.PHISHING]
         benign_urls = [e.url for e in self.dataset if e.data_type == DataType.BENIGN]
@@ -188,20 +180,14 @@ class DatasetLoader:
         phishing_set = set(phishing_urls)
         benign_set = set(benign_urls)
 
-        # --------------------------------------------------
-        # 1. Internal duplicates (same class)
-        # --------------------------------------------------
+        # Internal duplicates
         phishing_dupes = len(phishing_urls) - len(phishing_set)
         benign_dupes = len(benign_urls) - len(benign_set)
 
-        # --------------------------------------------------
-        # 2. Cross-class overlap (VERY important)
-        # --------------------------------------------------
+        # Cross-class overlap
         cross_overlap = phishing_set.intersection(benign_set)
 
-        # --------------------------------------------------
-        # 3. Report
-        # --------------------------------------------------
+        # Report
         print("\n=== URL Duplication Report ===")
         print(f"Total phishing URLs: {len(phishing_urls)}")
         print(f"Unique phishing URLs: {len(phishing_set)}")
@@ -210,9 +196,10 @@ class DatasetLoader:
         print(f"\nTotal benign URLs: {len(benign_urls)}")
         print(f"Unique benign URLs: {len(benign_set)}")
         print(f"Duplicate benign URLs: {benign_dupes}")
+
         # Print duplicates if any
         if benign_dupes > 0:
-            print("\n⚠️ Example duplicate benign URLs:")
+            print("\nWARNING Example duplicate benign URLs:")
             seen = set()
             for url in benign_urls:
                 if url in seen:
@@ -223,7 +210,7 @@ class DatasetLoader:
         print(f"\nCross-class overlaps (phishing == benign): {len(cross_overlap)}")
 
         if cross_overlap:
-            print("\n⚠️ Example overlapping URLs:")
+            print("\nWARNING Example overlapping URLs:")
             for url in list(cross_overlap)[:10]:
                 print(f"  - {url}")
 
@@ -233,16 +220,6 @@ class DatasetLoader:
         self,
         train_percentage: float = 0.8
     ) -> tuple[list[UrlEntry], list[UrlEntry]]:
-        """
-        Split dataset into train and evaluation sets with:
-        - No overlapping URLs
-        - Percentage-based sizing
-        - Same phishing/benign distribution in both sets (stratified)
-
-        :param train_percentage: Fraction of data to use for training (0 < p < 1)
-        :param seed: Random seed for reproducibility
-        :return: (train_dataset, eval_dataset)
-        """
 
         if not 0 < train_percentage < 1:
             raise ValueError("train_percentage must be between 0 and 1")
@@ -296,32 +273,3 @@ class DatasetLoader:
         print(f"  Phishing: {len(phishing_eval)} | Benign: {len(benign_eval)}")
 
         return train_dataset, eval_dataset
-
-    def evaluate_on_test_set(self, detector, test_urls, test_labels, dataset_name="Test"):
-        """Evaluate detector on test dataset"""
-        print(f"\n=== Testing on {dataset_name} Dataset ===")
-        results = detector.predict(test_urls)
-        
-        # Calculate accuracy on test dataset
-        correct = 0
-        for result, true_label in zip(results, test_labels):
-            predicted_label = 1 if result['prediction'] == 'Phishing' else 0
-            if predicted_label == true_label:
-                correct += 1
-        
-        accuracy = correct / len(test_labels) * 100
-        print(f"\n{dataset_name} Dataset Accuracy: {accuracy:.2f}%")
-        print(f"Correct: {correct}/{len(test_labels)}")
-        
-        # Show some example predictions
-        print(f"\n=== Sample Predictions from {dataset_name} Dataset ===")
-        for i in range(min(10, len(results))):
-            result = results[i]
-            true_label = test_labels[i]
-            true_class = "Phishing" if true_label == 1 else "Legitimate"
-            correct_symbol = "✓" if result['prediction'] == true_class else "✗"
-            
-            print(f"\n{correct_symbol} URL: {result['url'][:60]}...")
-            print(f"  True: {true_class} | Predicted: {result['prediction']} | Confidence: {result['confidence']:.4f}")
-            if result['homoglyph_warning']:
-                print(f"  ⚠️  Warnings: {', '.join(result['homoglyph_warning'])}")

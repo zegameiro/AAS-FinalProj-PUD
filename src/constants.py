@@ -76,5 +76,3 @@ URL_SHORTENERS = [
     'is.gd', 'buff.ly', 'adf.ly', 'bit.do', 'short.link',
     'tiny.cc', 'tr.im', 'cli.gs', 'u.to', 'rb.gy'
 ]
-
-SPAM_URL = "http://data.phishtank.com/data/online-valid.csv"

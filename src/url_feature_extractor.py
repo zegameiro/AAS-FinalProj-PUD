@@ -29,11 +29,10 @@ class URLFeatureExtractor:
         path = parsed.path
         query = parsed.query
         
-        # Entropy Calculation (only on domain to avoid false positives from query parameters)
+        # Entropy Calculation
         features['entropy'] = self._calculate_entropy(domain)
         
         # Domain features
-        # Count subdomains: google.com has 0, sub.google.com has 1, deep.sub.google.com has 2
         dot_count = domain.count('.')
         features['subdomain_count'] = max(0, dot_count - 1) if dot_count > 0 else 0
         
@@ -44,8 +43,7 @@ class URLFeatureExtractor:
         # IP address in URL
         features['has_ip'] = int(self._has_ip_address(domain))
         
-        # Port number detection (check if domain has port after removing protocol)
-        # domain might be 'example.com:8080' or just 'example.com'
+        # Port number detection
         domain_parts = domain.split(':')
         features['has_port'] = int(len(domain_parts) > 1 and domain_parts[-1].isdigit())
         
@@ -55,14 +53,13 @@ class URLFeatureExtractor:
         features['has_trusted_tld'] = int(any(tld.endswith(tt) for tt in TRUSTED_TLDS))
         features['tld_length'] = len(tld.replace('.', ''))
 
-        # Suspicious words - focus on domain and path, not query params
-        # Query params often have legitimate words like 'login' or 'account'
+        # Suspicious words
         domain_lower = domain.lower()
         path_lower = path.lower()
         
-        # Count in domain (more suspicious) - weight x2
+        # Count in domain
         domain_suspicious = sum(2 for word in SUSPICIOUS_WORDS if word in domain_lower)
-        # Count in path (less suspicious) - weight x1
+        # Count in path
         path_suspicious = sum(1 for word in SUSPICIOUS_WORDS if word in path_lower)
         
         features['suspicious_word_count'] = domain_suspicious + path_suspicious
@@ -92,13 +89,13 @@ class URLFeatureExtractor:
         features['avg_path_token_length'] = np.mean([len(t) for t in path_tokens]) if path_tokens else 0
         features['path_length'] = len(path)
         features['path_depth'] = path.count('/')
-        # Add ratio of path to total URL (phishing often has short paths)
+        # Add ratio of path to total URL
         features['path_to_url_ratio'] = len(path) / len(url) if len(url) > 0 else 0
         
-        # Query string analysis - use ratios for better generalization
+        # Query string analysis
         features['query_length'] = len(query)
         features['query_param_count'] = query.count('&') + 1 if query else 0
-        # Ratio of query to total URL (helps distinguish legitimate vs suspicious)
+        # Ratio of query to total URL
         features['query_to_url_ratio'] = len(query) / len(url) if len(url) > 0 else 0
         # Domain length ratio
         features['domain_to_url_ratio'] = len(domain) / len(url) if len(url) > 0 else 0
@@ -111,7 +108,7 @@ class URLFeatureExtractor:
         features['longest_word_length'] = max([len(w) for w in words]) if words else 0
         features['avg_word_length'] = np.mean([len(w) for w in words]) if words else 0
         
-        # Homoglyph detection (IDN homograph attack)
+        # Homoglyph detection
         features['homoglyph_count'] = self._count_homoglyphs(url)
         features['has_homoglyphs'] = int(features['homoglyph_count'] > 0)
         features['non_ascii_count'] = sum(1 for c in url if ord(c) > 127)
@@ -120,7 +117,7 @@ class URLFeatureExtractor:
         # Punycode detection (xn-- prefix indicates encoded international domain)
         features['has_punycode'] = int('xn--' in domain)
         
-        # Mixed character sets (suspicious mixing)
+        # Mixed character sets
         features['has_mixed_charset'] = int(self._has_mixed_charset(url))
         
         # URL encoding detection
@@ -143,8 +140,7 @@ class URLFeatureExtractor:
         # Statistical features
         features['char_diversity'] = len(set(url)) / features['url_length'] if features['url_length'] > 0 else 0
         
-        # Redirect indicators (multiple http/https in URL suggests redirects)
-        # Normal URL has 1 occurrence, redirects have 2+
+        # Redirect indicators
         protocol_count = url.count('http://') + url.count('https://')
         features['redirect_count'] = max(0, protocol_count - 1)
 
@@ -165,7 +161,6 @@ class URLFeatureExtractor:
         if len(parts) >= 2 and len(parts[-1]) <= 3 and len(parts[-2]) <= 3:
             return '.' + '.'.join(parts[-2:])
         
-        # Standard single TLD like .com, .org
         return '.' + parts[-1]
 
     def _check_brand_in_subdomain(self, domain):

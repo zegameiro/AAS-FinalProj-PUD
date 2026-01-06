@@ -122,11 +122,11 @@ Confusion Matrix:
 
 |         | Predicted Legitimate | Predicted Phishing |
 |---------|----------------------|--------------------|
-| Actual Legitimate |        98292         |        1245        |
-| Actual Phishing   |        1386          |       23133        |
+| Actual Legitimate |        86760         |        1067        |
+| Actual Phishing   |        1265          |       20369        |
 
-True Negatives: 98292, False Positives: 1245
-False Negatives: 1386, True Positives: 23133
+True Negatives: 86760, False Positives: 1067
+False Negatives: 1265, True Positives: 20369
 
 We also trained and evaluated the K-Nearest Neighbors (KNN) model, and obtained the following results:
 
@@ -139,11 +139,11 @@ We also trained and evaluated the K-Nearest Neighbors (KNN) model, and obtained 
 Confusion Matrix:
 |         | Predicted Legitimate | Predicted Phishing |
 |---------|----------------------|--------------------|
-| Actual Legitimate |        98682         |        855        |
-| Actual Phishing   |        2002          |       22517        |
+| Actual Legitimate |        87078         |        749        |
+| Actual Phishing   |        1773          |       19861       |
 
-True Negatives: 98682, False Positives: 855
-False Negatives: 2002, True Positives: 22517
+True Negatives: 87078, False Positives: 749
+False Negatives: 1773, True Positives: 19861
 
 ### Key Findings:
 

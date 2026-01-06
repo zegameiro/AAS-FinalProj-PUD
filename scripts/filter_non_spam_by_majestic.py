@@ -26,10 +26,6 @@ def is_domain_or_subdomain_in_set(url_domain, reference_set):
         
     parts = url_domain.split('.')
     
-    # range(0, len(parts) - 1) ensures we don't check the TLD alone (e.g. 'com')
-    # Loop example for 'developers.minds.com':
-    # 1. checks 'developers.minds.com'
-    # 2. checks 'minds.com'
     for i in range(len(parts) - 1):
         sub_to_check = ".".join(parts[i:])
         if sub_to_check in reference_set:
@@ -40,7 +36,7 @@ def is_domain_or_subdomain_in_set(url_domain, reference_set):
 def filter_by_domain(csv_path, check_file_path):
     reference_domains = set()
     
-    # 1. Load Reference Domains
+    # Load Reference Domains
     print("Loading reference domains...")
     with open(csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
@@ -54,7 +50,7 @@ def filter_by_domain(csv_path, check_file_path):
     # 2. Process URLs
     print("Checking file...")
     matches = []
-    seen_urls = set()  # OPTIMIZATION: Tracks duplicates
+    seen_urls = set()
     
     with open(check_file_path, 'r', encoding='utf-8') as f:
         for line in tqdm(f, desc="Processing lines"):
@@ -64,7 +60,7 @@ def filter_by_domain(csv_path, check_file_path):
             if not line or not line.startswith("http"):
                 continue
 
-            # OPTIMIZATION: Check for duplicates immediately
+            # Check for duplicates immediately
             if line in seen_urls:
                 continue
             seen_urls.add(line)
@@ -75,11 +71,7 @@ def filter_by_domain(csv_path, check_file_path):
             # Check against database
             if is_domain_or_subdomain_in_set(url_domain, reference_domains):
                 matches.append(line)
-            else:
-                # Performance Note: Avoid printing every mismatch if the file is large.
-                # It slows down processing significantly.
-                # print(f"No match for: {line}") 
-                pass
+            
 
     print(f"Found {len(matches)} unique matches.")
     
@@ -92,7 +84,6 @@ def filter_by_domain(csv_path, check_file_path):
     return matches
 
 if __name__ == "__main__":
-    # improved robustness for file paths
     try:
         filter_by_domain('data/majestic_million.csv', 'data/non_spam_urls.txt')
     except FileNotFoundError as e:
