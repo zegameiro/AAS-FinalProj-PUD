@@ -94,10 +94,10 @@ python -m flask run -p 3000
 5. Select the `manifest.json` file located in the `browser_extension/` folder of this repository.
 6. The extension should now be loaded and active in your browser.
 7. You can click on the extension icon or pin it to the toolbar to better access its features.
-![Extension Icon](extension_icon.png)
+![Extension Icon](img/extension_icon.png)
 
 8. To test the extension, you can visit known phishing websites or use test URLs to see if the extension correctly identifies them.
-![URL Test](url_test.png)
+![URL Test](img/url_test.png)
 
 ## Dataset
 
