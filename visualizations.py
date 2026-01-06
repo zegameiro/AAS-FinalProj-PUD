@@ -15,6 +15,7 @@ from sklearn.metrics import (
 )
 from src.ai_models.knn_detector import KNNDetector
 from src.ai_models.random_forest_detector import RandomForestDetector
+from src.models import DataType
 from src.services.dataset_loader import fulldataset
 import json
 from pathlib import Path
@@ -435,11 +436,15 @@ def main():
     urls, labels = fulldataset.get_urls_and_labels()
     
     # Split data
-    train_urls, train_labels, test_urls, test_labels = fulldataset.split_train_test_datasets(
-        test_size=0.15,
-        balance_test=True,
-        random_seed=42
+    train_set, eval_set = fulldataset.split_train_eval(
+        train_percentage=0.85  # 85% for training, 15% for testing
     )
+
+    train_urls = [entry.url for entry in train_set]
+    train_labels = [1 if entry.data_type == DataType.PHISHING else 0 for entry in train_set]
+
+    test_urls = [entry.url for entry in eval_set]
+    test_labels = [1 if entry.data_type == DataType.PHISHING else 0 for entry in eval_set]
     
     print(f"Training samples: {len(train_urls)}")
     print(f"Test samples: {len(test_urls)}")
@@ -498,7 +503,6 @@ def main():
     print("  - dataset_statistics.png")
     print("  - confidence_distribution.png")
     print("  - metrics.json")
-    print("\nYou can now use these visualizations in your report!")
 
 
 if __name__ == "__main__":
